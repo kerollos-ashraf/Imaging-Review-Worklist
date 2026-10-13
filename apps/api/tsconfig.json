@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "noEmit": true, "types": ["node", "jest"], "rootDir": "." },
+  "include": ["src", "scripts", "tests", "jest.config.ts"]
+}
