@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+.env
+*.log
+playwright-report
+test-results
+
+# The assessment brief belongs to its author; it is not redistributed here.
+Imaging Review Worklist.pdf

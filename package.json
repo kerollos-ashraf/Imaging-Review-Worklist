@@ -1,0 +1,43 @@
+{
+  "name": "imaging-review-worklist",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "db:up": "docker compose up -d --wait postgres",
+    "db:down": "docker compose down",
+    "db:migrate": "npm run migrate -w apps/api",
+    "db:seed": "npm run seed -w apps/api",
+    "db:reset": "npm run reset -w apps/api",
+    "dev:api": "npm run dev -w apps/api",
+    "dev:web": "npm run dev -w apps/web",
+    "build:web": "npm run build -w apps/web",
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "npm run typecheck -w apps/api && npm run typecheck -w apps/web",
+    "test:api": "npm run test -w apps/api",
+    "test:web": "npm run test -w apps/web",
+    "test:e2e": "playwright test",
+    "test:contention": "npm run test:contention -w apps/api",
+    "test": "npm run lint && npm run typecheck && npm run test:api && npm run test:web && npm run test:e2e && npm run test:contention"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@eslint/js": "^9.17.0",
+    "@playwright/test": "^1.64.0",
+    "@types/pngjs": "^6.0.5",
+    "eslint": "^9.17.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "pngjs": "^7.0.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.2"
+  }
+}

@@ -1,0 +1,6 @@
+# Keep line endings identical on every platform.
+* text=auto eol=lf
+
+# DICOM fixtures must never be altered: the API test compares their exact bytes,
+# and the corrupt fixture is short enough to be mistaken for text.
+*.dcm binary
