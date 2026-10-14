@@ -72,6 +72,8 @@ export default tseslint.config(
       ...react.configs.flat['jsx-runtime'].rules,
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'error',
+      // Props are checked by TypeScript; the runtime PropTypes rule only adds false positives.
+      'react/prop-types': 'off',
     },
   },
   {
