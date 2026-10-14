@@ -18,6 +18,10 @@ afterAll(async () => {
   await ctx.pool.end();
 });
 
+function ids(body: unknown): string[] {
+  return (body as { id: string }[]).map((study) => study.id);
+}
+
 describe('GET /api/studies', () => {
   it('returns seeded studies ordered by createdAt then id', async () => {
     const res = await request(ctx.app).get('/api/studies').expect(200);
@@ -47,6 +51,74 @@ describe('GET /api/studies', () => {
       .query({ status: 'Unassigned', modality: 'CT' })
       .expect(200);
     expect((res.body as { id: string }[]).map((s) => s.id)).toEqual(['study-007']);
+  });
+
+  it('filters by owner', async () => {
+    const res = await request(ctx.app).get('/api/studies').query({ ownerId: 'reviewer-b' }).expect(200);
+    expect(ids(res.body)).toEqual(['study-004', 'study-006']);
+  });
+
+  it('returns nothing for an owner with no studies', async () => {
+    const res = await request(ctx.app).get('/api/studies').query({ ownerId: 'reviewer-x' }).expect(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it('searches the study id, ignoring case', async () => {
+    const res = await request(ctx.app).get('/api/studies').query({ search: 'STUDY-00' }).expect(200);
+    expect(ids(res.body)).toHaveLength(7);
+
+    const one = await request(ctx.app).get('/api/studies').query({ search: '  -005 ' }).expect(200);
+    expect(ids(one.body)).toEqual(['study-005']);
+  });
+
+  it('treats LIKE wildcards in the search text literally', async () => {
+    await ctx.pool.query(
+      `INSERT INTO studies (id, modality, created_at, dicom_file_ref)
+       VALUES ('odd_50%!', 'OT', now(), 'gradient.dcm')`,
+    );
+    for (const search of ['%', '_', '!']) {
+      const res = await request(ctx.app).get('/api/studies').query({ search }).expect(200);
+      expect(ids(res.body)).toEqual(['odd_50%!']);
+    }
+  });
+
+  it('combines owner, search, status and modality with AND', async () => {
+    const res = await request(ctx.app)
+      .get('/api/studies')
+      .query({ ownerId: 'reviewer-a', search: '00', status: 'Completed', modality: 'OT' })
+      .expect(200);
+    expect(ids(res.body)).toEqual(['study-005']);
+  });
+
+  it('orders newest first on request, reversing the id tie-break too', async () => {
+    const asc = await request(ctx.app).get('/api/studies').query({ order: 'asc' }).expect(200);
+    const desc = await request(ctx.app).get('/api/studies').query({ order: 'desc' }).expect(200);
+    expect(ids(desc.body)).toEqual([...ids(asc.body)].reverse());
+    expect(ids(desc.body)[0]).toBe('study-007');
+    // study-001 and study-002 share a timestamp.
+    expect(ids(desc.body).slice(-2)).toEqual(['study-002', 'study-001']);
+  });
+
+  it('returns the newest 100, not the oldest, when ordered newest first', async () => {
+    await ctx.pool.query(
+      `INSERT INTO studies (id, modality, created_at, dicom_file_ref)
+       SELECT 'late-' || lpad(n::text, 3, '0'), 'OT', now(), 'gradient.dcm'
+       FROM generate_series(1, 120) AS n`,
+    );
+    const res = await request(ctx.app).get('/api/studies').query({ order: 'desc' }).expect(200);
+    expect(res.body).toHaveLength(100);
+    expect(ids(res.body).every((id) => id.startsWith('late-'))).toBe(true);
+  });
+
+  it.each([
+    ['an invalid order', { order: 'sideways' }],
+    ['an empty search', { search: '   ' }],
+    ['a search that is too long', { search: 'x'.repeat(65) }],
+    ['a malformed owner', { ownerId: 'a b' }],
+    ['a repeated parameter', { search: ['a', 'b'] }],
+  ])('rejects %s with 400 INVALID_INPUT', async (_name, query) => {
+    const res = await request(ctx.app).get('/api/studies').query(query).expect(400);
+    expect((res.body as { error: { code: string } }).error.code).toBe('INVALID_INPUT');
   });
 
   it('returns at most 100 studies', async () => {

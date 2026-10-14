@@ -1,10 +1,18 @@
 import { z } from 'zod';
 import { ValidationError } from '../errors/AppError';
-import { REVIEW_NOTE_MAX_LENGTH, STUDY_STATUSES } from '../domain/study';
+import {
+  MAX_LIST_RESULTS,
+  REVIEW_NOTE_MAX_LENGTH,
+  SORT_ORDERS,
+  STUDY_STATUSES,
+} from '../domain/study';
 
 const NOT_AN_OBJECT = 'Request body must be a JSON object';
 const VERSION_MESSAGE = 'expectedVersion must be a positive integer';
 const NOTE_MESSAGE = `reviewNote must be 1-${REVIEW_NOTE_MAX_LENGTH} characters after trimming`;
+
+const PAGE_MESSAGE = 'page must be a positive integer';
+const PAGE_SIZE_MESSAGE = `pageSize must be an integer from 1 to ${MAX_LIST_RESULTS}`;
 
 const reviewerId = z
   .string({
@@ -43,6 +51,31 @@ export const studyFilterSchema = z.object({
     .string({ invalid_type_error: 'modality must be a single string value' })
     .regex(/^[A-Za-z0-9]{1,16}$/, 'modality must be 1-16 alphanumeric characters')
     .optional(),
+  ownerId: z
+    .string({ invalid_type_error: 'ownerId must be a single string value' })
+    .regex(/^[A-Za-z0-9_-]{1,64}$/, 'ownerId must be 1-64 letters, digits, dashes or underscores')
+    .optional(),
+  search: z
+    .string({ invalid_type_error: 'search must be a single string value' })
+    .trim()
+    .min(1, 'search must be 1-64 characters')
+    .max(64, 'search must be 1-64 characters')
+    .optional(),
+  order: z
+    .enum(SORT_ORDERS, { errorMap: () => ({ message: 'order must be asc or desc' }) })
+    .optional(),
+  // Query values arrive as strings, so the two paging numbers are coerced.
+  page: z.coerce
+    .number({ invalid_type_error: PAGE_MESSAGE })
+    .int(PAGE_MESSAGE)
+    .min(1, PAGE_MESSAGE)
+    .default(1),
+  pageSize: z.coerce
+    .number({ invalid_type_error: PAGE_SIZE_MESSAGE })
+    .int(PAGE_SIZE_MESSAGE)
+    .min(1, PAGE_SIZE_MESSAGE)
+    .max(MAX_LIST_RESULTS, PAGE_SIZE_MESSAGE)
+    .default(MAX_LIST_RESULTS),
 });
 
 export type ClaimInput = z.infer<typeof claimSchema>;

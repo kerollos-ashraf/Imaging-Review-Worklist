@@ -41,7 +41,12 @@ function build(reads: (Study | null)[]): Fakes {
   const queue = [...reads];
   const served: Study[] = [];
   const reader: StudyReader = {
-    list: () => Promise.resolve([]),
+    list: () =>
+      Promise.resolve({
+        studies: [],
+        total: 0,
+        statusCounts: { Unassigned: 0, InReview: 0, Completed: 0 },
+      }),
     findById: () => {
       const next = queue.length > 1 ? queue.shift() : queue[0];
       if (next) {

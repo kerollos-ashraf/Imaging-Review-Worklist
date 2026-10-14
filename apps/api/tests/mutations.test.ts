@@ -2,7 +2,7 @@ import request from 'supertest';
 import type { Test } from 'supertest';
 import { buildContainerForTest, createTestContext, resetData } from './helpers';
 import type { TestContext } from './helpers';
-import { seedDatabase } from '../src/seedData';
+import { CORE_STUDY_COUNT, seedDatabase } from '../src/seedData';
 
 interface StudyBody {
   id: string;
@@ -293,7 +293,7 @@ describe('persistence', () => {
 
   it('does not overwrite modified data when the seed runs again', async () => {
     await claim('study-001', { reviewerId: 'reviewer-b', expectedVersion: 1 }).expect(200);
-    await seedDatabase(ctx.pool);
+    await seedDatabase(ctx.pool, CORE_STUDY_COUNT);
     expect(await snapshot('study-001')).toMatchObject({
       status: 'InReview',
       ownerId: 'reviewer-b',

@@ -22,7 +22,7 @@ const REVIEWERS = [
   { id: 'reviewer-b', displayName: 'Reviewer B' },
 ];
 
-const STUDIES: SeedStudy[] = [
+const CORE_STUDIES: SeedStudy[] = [
   { id: 'study-001', modality: 'OT', createdAt: '2026-01-10T08:00:00Z', status: 'Unassigned', ownerId: null, reviewNote: null, version: 1, file: 'gradient.dcm' },
   { id: 'study-002', modality: 'OT', createdAt: '2026-01-10T08:00:00Z', status: 'Unassigned', ownerId: null, reviewNote: null, version: 1, file: 'checkerboard.dcm' },
   { id: 'study-003', modality: 'OT', createdAt: '2026-01-11T09:30:00Z', status: 'InReview', ownerId: 'reviewer-a', reviewNote: null, version: 2, file: 'gradient.dcm' },
@@ -32,14 +32,66 @@ const STUDIES: SeedStudy[] = [
   { id: 'study-007', modality: 'CT', createdAt: '2026-01-15T14:00:00Z', status: 'Unassigned', ownerId: null, reviewNote: null, version: 1, file: 'corrupt.dcm' },
 ];
 
-export async function seedDatabase(pool: Pool): Promise<void> {
+/** The hand-written studies: one per fixture and status combination the tests rely on. */
+export const CORE_STUDY_COUNT = CORE_STUDIES.length;
+
+/** How many studies an ordinary seed creates, so the worklist needs paging. */
+export const DEFAULT_STUDY_COUNT = 100;
+
+const HOUR_MS = 60 * 60 * 1000;
+const FIRST_GENERATED_AT = Date.parse('2026-01-16T08:00:00Z');
+
+/**
+ * A deterministic study for position `number` (8, 9, ...). Each one is created
+ * six hours after the previous, so they always sort after the core studies.
+ * The status cycles so every page shows a realistic mix: two Unassigned, one
+ * InReview per reviewer, one Completed.
+ */
+function generatedStudy(number: number): SeedStudy {
+  const id = `study-${String(number).padStart(3, '0')}`;
+  const reviewer = number % 2 === 0 ? 'reviewer-a' : 'reviewer-b';
+  const base = {
+    id,
+    modality: 'OT',
+    createdAt: new Date(
+      FIRST_GENERATED_AT + (number - CORE_STUDY_COUNT - 1) * 6 * HOUR_MS,
+    ).toISOString(),
+    file: number % 2 === 0 ? 'gradient.dcm' : 'checkerboard.dcm',
+  };
+  switch (number % 5) {
+    case 2:
+      return { ...base, status: 'InReview', ownerId: 'reviewer-a', reviewNote: null, version: 2 };
+    case 3:
+      return { ...base, status: 'InReview', ownerId: 'reviewer-b', reviewNote: null, version: 2 };
+    case 4:
+      return {
+        ...base,
+        status: 'Completed',
+        ownerId: reviewer,
+        reviewNote: `Synthetic review note for ${id}.`,
+        version: 3,
+      };
+    default:
+      return { ...base, status: 'Unassigned', ownerId: null, reviewNote: null, version: 1 };
+  }
+}
+
+/** The first `count` seed studies: the core ones, then generated ones. */
+export function seedStudies(count: number): SeedStudy[] {
+  const generated = Array.from({ length: Math.max(0, count - CORE_STUDY_COUNT) }, (_, index) =>
+    generatedStudy(CORE_STUDY_COUNT + index + 1),
+  );
+  return [...CORE_STUDIES.slice(0, count), ...generated];
+}
+
+export async function seedDatabase(pool: Pool, studyCount = DEFAULT_STUDY_COUNT): Promise<void> {
   for (const reviewer of REVIEWERS) {
     await pool.query(
       'INSERT INTO reviewers (id, display_name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING',
       [reviewer.id, reviewer.displayName],
     );
   }
-  for (const study of STUDIES) {
+  for (const study of seedStudies(studyCount)) {
     await pool.query(
       `INSERT INTO studies
          (id, modality, created_at, status, owner_id, review_note, version, dicom_file_ref)

@@ -11,9 +11,12 @@ import type {
   StudyReader,
   StudyWriter,
 } from '../domain/ports';
-import type { Study, StudyFilter } from '../domain/study';
+import type { PageRequest, Study, StudyFilter, StudyPage } from '../domain/study';
 import { claimSchema, completionSchema, parseInput, studyFilterSchema } from './validation';
 import type { ClaimInput } from './validation';
+
+/** One page of studies together with the paging that produced it. */
+export type StudyListResult = StudyPage & PageRequest;
 
 export class StudyService {
   constructor(
@@ -24,16 +27,14 @@ export class StudyService {
   ) {}
 
   /** `raw` is untrusted transport input (for example the parsed query string). */
-  async listStudies(raw: unknown): Promise<Study[]> {
-    const parsed = parseInput(studyFilterSchema, raw);
-    const filter: StudyFilter = {};
-    if (parsed.status !== undefined) {
-      filter.status = parsed.status;
-    }
-    if (parsed.modality !== undefined) {
-      filter.modality = parsed.modality;
-    }
-    return this.reader.list(filter);
+  async listStudies(raw: unknown): Promise<StudyListResult> {
+    const { page, pageSize, ...conditions } = parseInput(studyFilterSchema, raw);
+    // Copy only the keys that were supplied: absent means "no condition".
+    const filter: StudyFilter = Object.fromEntries(
+      Object.entries(conditions).filter(([, value]) => value !== undefined),
+    );
+    const result = await this.reader.list(filter, { page, pageSize });
+    return { ...result, page, pageSize };
   }
 
   async getStudy(id: string): Promise<Study> {

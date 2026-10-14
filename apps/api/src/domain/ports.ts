@@ -1,7 +1,7 @@
-import type { Reviewer, Study, StudyFilter } from './study';
+import type { PageRequest, Reviewer, Study, StudyFilter, StudyPage } from './study';
 
 export interface StudyReader {
-  list(filter: StudyFilter): Promise<Study[]>;
+  list(filter: StudyFilter, page: PageRequest): Promise<StudyPage>;
   findById(id: string): Promise<Study | null>;
 }
 

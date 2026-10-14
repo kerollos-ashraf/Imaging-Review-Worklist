@@ -26,8 +26,22 @@ export class StudyController {
   ) {}
 
   list = async (req: Request, res: Response): Promise<void> => {
-    const { status, modality } = req.query;
-    res.json(await this.studies.listStudies({ status, modality }));
+    const { status, modality, ownerId, search, order, page, pageSize } = req.query;
+    const result = await this.studies.listStudies({
+      status,
+      modality,
+      ownerId,
+      search,
+      order,
+      page,
+      pageSize,
+    });
+    // The body stays a plain array of studies; paging details travel in headers.
+    res.setHeader('X-Total-Count', String(result.total));
+    res.setHeader('X-Status-Counts', JSON.stringify(result.statusCounts));
+    res.setHeader('X-Page', String(result.page));
+    res.setHeader('X-Page-Size', String(result.pageSize));
+    res.json(result.studies);
   };
 
   get = async (req: Request<{ id: string }>, res: Response): Promise<void> => {

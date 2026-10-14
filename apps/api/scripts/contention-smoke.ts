@@ -4,7 +4,7 @@ import path from 'node:path';
 import { loadConfig } from '../src/config';
 import { createPool } from '../src/infrastructure/db';
 import { runMigrations } from '../src/infrastructure/migrate';
-import { seedDatabase } from '../src/seedData';
+import { CORE_STUDY_COUNT, seedDatabase } from '../src/seedData';
 
 /**
  * Two separate API processes, one shared Postgres, one contested claim per
@@ -60,7 +60,7 @@ async function prepareDatabase(databaseUrl: string): Promise<void> {
   const pool = createPool(databaseUrl);
   try {
     await pool.query('TRUNCATE studies, reviewers');
-    await seedDatabase(pool);
+    await seedDatabase(pool, CORE_STUDY_COUNT);
     for (let round = 0; round < ROUNDS; round += 1) {
       await pool.query(
         `INSERT INTO studies (id, modality, created_at, dicom_file_ref)

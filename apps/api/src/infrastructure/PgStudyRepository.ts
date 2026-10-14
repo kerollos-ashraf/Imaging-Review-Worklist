@@ -1,7 +1,14 @@
 import type { Pool } from 'pg';
 import type { StudyReader, StudyWriter } from '../domain/ports';
-import { MAX_LIST_RESULTS } from '../domain/study';
-import type { Study, StudyFilter, StudyStatus } from '../domain/study';
+import type {
+  PageRequest,
+  SortOrder,
+  StatusCounts,
+  Study,
+  StudyFilter,
+  StudyPage,
+  StudyStatus,
+} from '../domain/study';
 
 export interface StudyRow {
   id: string;
@@ -27,19 +34,61 @@ export function mapStudyRow(row: StudyRow): Study {
   };
 }
 
+/** Shared by the page query and the count query so both see the same rows. */
+const LIST_WHERE = `
+  WHERE ($1::study_status IS NULL OR status = $1::study_status)
+    AND ($2::text IS NULL OR modality = $2::text)
+    AND ($3::text IS NULL OR owner_id = $3::text)
+    AND ($4::text IS NULL OR id ILIKE $4::text ESCAPE '!')`;
+
+const ORDER_BY: Record<SortOrder, string> = {
+  asc: 'created_at ASC, id ASC',
+  desc: 'created_at DESC, id DESC',
+};
+
+/**
+ * A LIKE pattern matching `text` anywhere, with its wildcards taken literally.
+ * `!` is the escape character (declared in the query), which avoids the
+ * backslash-in-a-string pitfalls of the default.
+ */
+function containsPattern(text: string): string {
+  return `%${text.replace(/[!%_]/g, (char) => `!${char}`)}%`;
+}
+
 export class PgStudyRepository implements StudyReader, StudyWriter {
   constructor(private readonly pool: Pool) {}
 
-  async list(filter: StudyFilter): Promise<Study[]> {
-    const result = await this.pool.query<StudyRow>(
-      `SELECT ${STUDY_COLUMNS} FROM studies
-       WHERE ($1::study_status IS NULL OR status = $1::study_status)
-         AND ($2::text IS NULL OR modality = $2::text)
-       ORDER BY created_at ASC, id ASC
-       LIMIT $3`,
-      [filter.status ?? null, filter.modality ?? null, MAX_LIST_RESULTS],
-    );
-    return result.rows.map(mapStudyRow);
+  async list(filter: StudyFilter, page: PageRequest): Promise<StudyPage> {
+    const conditions = [
+      filter.status ?? null,
+      filter.modality ?? null,
+      filter.ownerId ?? null,
+      filter.search === undefined ? null : containsPattern(filter.search),
+    ];
+    // The direction cannot be a bind parameter, so it comes from a fixed map.
+    const orderBy = ORDER_BY[filter.order ?? 'asc'];
+    const [rows, count] = await Promise.all([
+      this.pool.query<StudyRow>(
+        `SELECT ${STUDY_COLUMNS} FROM studies ${LIST_WHERE}
+         ORDER BY ${orderBy}
+         LIMIT $5 OFFSET $6`,
+        [...conditions, page.pageSize, (page.page - 1) * page.pageSize],
+      ),
+      // One grouped count gives both the per-status breakdown and the total.
+      this.pool.query<{ status: StudyStatus; count: string }>(
+        `SELECT status, count(*) AS count FROM studies ${LIST_WHERE} GROUP BY status`,
+        conditions,
+      ),
+    ]);
+    const statusCounts: StatusCounts = { Unassigned: 0, InReview: 0, Completed: 0 };
+    for (const row of count.rows) {
+      statusCounts[row.status] = Number(row.count);
+    }
+    return {
+      studies: rows.rows.map(mapStudyRow),
+      total: statusCounts.Unassigned + statusCounts.InReview + statusCounts.Completed,
+      statusCounts,
+    };
   }
 
   async findById(id: string): Promise<Study | null> {

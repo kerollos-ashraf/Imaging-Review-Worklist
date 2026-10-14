@@ -4,7 +4,7 @@ import type { Express } from 'express';
 import type { Pool } from 'pg';
 import { buildContainer } from '../src/container';
 import { createPool } from '../src/infrastructure/db';
-import { seedDatabase } from '../src/seedData';
+import { CORE_STUDY_COUNT, seedDatabase } from '../src/seedData';
 
 dotenv.config({ path: path.resolve(__dirname, '../../../.env'), quiet: true });
 
@@ -44,5 +44,5 @@ export function createTestContext(): TestContext {
 /** Restores the known seed state so every test starts from the same rows. */
 export async function resetData(pool: Pool): Promise<void> {
   await pool.query('TRUNCATE studies, reviewers');
-  await seedDatabase(pool);
+  await seedDatabase(pool, CORE_STUDY_COUNT);
 }

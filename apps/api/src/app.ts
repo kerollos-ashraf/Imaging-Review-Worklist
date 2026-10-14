@@ -39,7 +39,13 @@ export function createApp(deps: AppDependencies): Express {
 
   app.disable('x-powered-by');
   app.use(securityHeaders);
-  app.use(cors({ origin: deps.webOrigin }));
+  app.use(
+    cors({
+      origin: deps.webOrigin,
+      // Lets a browser on another origin read the paging headers.
+      exposedHeaders: ['X-Total-Count', 'X-Status-Counts', 'X-Page', 'X-Page-Size'],
+    }),
+  );
   app.use(express.json({ limit: '16kb' }));
   app.use(requestLogger(deps.logger));
 
