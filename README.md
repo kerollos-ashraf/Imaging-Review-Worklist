@@ -71,7 +71,7 @@ The same steps run in CI on every push and pull request: [.github/workflows/ci.y
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/studies?status=&modality=` | Filters combined with AND, at most 100 results, ordered by `createdAt` then `id` |
+| GET | `/api/studies` | Optional filters combined with AND (see below), at most 100 results, ordered by `createdAt` then `id` |
 | GET | `/api/studies/{id}` | Metadata, ownership and version. No raw DICOM tags |
 | POST | `/api/studies/{id}/claim` | `{ reviewerId, expectedVersion }`: Unassigned -> InReview |
 | POST | `/api/studies/{id}/complete` | `{ reviewerId, expectedVersion, reviewNote }`: InReview -> Completed |
@@ -80,6 +80,30 @@ The same steps run in CI on every push and pull request: [.github/workflows/ci.y
 | GET | `/health` | Process and database liveness |
 
 A study has `id`, `modality`, `createdAt`, `status`, `ownerId`, `reviewNote` and an integer `version`.
+
+### List filters
+
+All are optional query parameters. `status` and `modality` are the two the brief asks for; the rest are additions and leave the default behaviour unchanged.
+
+| Parameter | Meaning |
+|---|---|
+| `status` | `Unassigned`, `InReview` or `Completed` |
+| `modality` | Exact match, 1-16 letters or digits |
+| `ownerId` | Studies owned by that reviewer. An owner with no studies gives an empty list |
+| `search` | 1-64 characters matched anywhere in the study id, ignoring case. `%` and `_` are taken literally |
+| `order` | `asc` (default, oldest first) or `desc` (newest first). The id tie-break follows the same direction |
+| `page` | 1-based page number, default `1` |
+| `pageSize` | Rows per page, 1 to 100, default `100` |
+
+Paging is done by the database (`LIMIT`/`OFFSET` after filtering and ordering). The response body is always a plain array of studies, never more than 100, exactly as the brief describes; the paging details are response headers:
+
+| Header | Meaning |
+|---|---|
+| `X-Total-Count` | Studies matching the filters across all pages |
+| `X-Status-Counts` | The same matching studies by status, as JSON, for example `{"Unassigned":40,"InReview":39,"Completed":21}`. The values sum to the total |
+| `X-Page`, `X-Page-Size` | The page that was returned |
+
+A page beyond the last one returns an empty array with the same total.
 
 ### Validation order and errors
 
@@ -97,6 +121,10 @@ Error bodies look like `{ "error": { "code": "...", "message": "..." } }`.
 
 ## Seed data
 
+`npm run db:seed` creates **100 studies** and the two reviewers. It is deterministic and never overwrites existing rows.
+
+The first seven are hand-written so that every fixture and status is covered:
+
 | Study | Fixture | Status | Owner |
 |---|---|---|---|
 | study-001 | gradient.dcm | Unassigned | - |
@@ -107,7 +135,19 @@ Error bodies look like `{ "error": { "code": "...", "message": "..." } }`.
 | study-006 | checkerboard.dcm | Completed | reviewer-b |
 | study-007 | corrupt.dcm | Unassigned | - |
 
+`study-008` to `study-100` are generated: each is created six hours after the previous one, alternates between the two valid fixtures, and cycles through the statuses (two Unassigned, one InReview per reviewer, one Completed) so every page shows a realistic mix.
+
 Fixtures live in [samples/](samples/). The database stores only a fixed file key per study; the server resolves it through an allowlist, never from caller input.
+
+## Interface
+
+- **Themes:** light and dark, following the system preference until the user picks one (remembered in `localStorage`). Both pass an automated WCAG 2.1 AA scan.
+- **Filter bar:** search by study name, filter by status, modality and owner, and sort by created date (oldest or newest first). Nothing is requested until "Apply filters" or Enter; "Clear" resets everything.
+- **Paging:** ten studies per page by default (10, 25 or 50), with Previous/Next, the range shown ("Showing 11-20 of 100") and the page count. While the next page loads, the current one stays on screen, dimmed, so nothing jumps and keyboard focus is kept. Changing a filter returns to page 1.
+- **Worklist:** status totals for everything matching the filters across all pages (counted by the server), a "You" tag on your own studies, a "Draft" tag on studies with an unsent note, and Up/Down/Home/End to move between studies.
+- **Study panel:** a three-step progress indicator, key facts as cards, and a note form with a live character meter and `Ctrl+Enter` to submit. The browser asks before leaving the page while a draft exists.
+- **Viewer:** drag on the image to change window (horizontal) and level (vertical); the sliders stay in sync and remain the keyboard route. Fit and Reset sit in a toolbar with the three allowed metadata fields.
+- **Small screens:** the two panels stack, the table scrolls inside its panel, and motion is disabled when the system asks for reduced motion.
 
 ## Design decisions
 
