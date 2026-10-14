@@ -177,5 +177,43 @@ test.describe('real DICOM viewer', () => {
     await selectStudy(page, CORRUPT);
     await waitForViewer(page, 'error', CORRUPT);
     expect(await scan()).toEqual([]);
+
+    // The dark theme must pass the same checks, including colour contrast.
+    await page.getByRole('button', { name: 'Switch to dark theme' }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    expect(await scan()).toEqual([]);
+    await selectStudy(page, GRADIENT);
+    await waitForViewer(page, 'ready', GRADIENT);
+    expect(await scan()).toEqual([]);
+  });
+
+  test('adjusts window/level by dragging on the image', async ({ page }) => {
+    await selectStudy(page, GRADIENT);
+    await waitForViewer(page, 'ready', GRADIENT);
+    const original = await stageHash(page);
+    const widthBefore = await page.getByLabel(/Window width/).inputValue();
+
+    const box = await stage(page).boundingBox();
+    if (!box) {
+      throw new Error('viewer stage is not visible');
+    }
+    let renders = (await debugSnapshot(page)).renderCount;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 - 150, box.y + box.height / 2, { steps: 5 });
+    await page.mouse.up();
+    await waitForRender(page, renders);
+
+    // Dragging left narrows the window: the slider follows and the pixels change.
+    expect(Number(await page.getByLabel(/Window width/).inputValue())).toBeLessThan(
+      Number(widthBefore),
+    );
+    expect(await stageHash(page)).not.toBe(original);
+
+    renders = (await debugSnapshot(page)).renderCount;
+    await page.getByRole('button', { name: 'Reset' }).click();
+    await waitForRender(page, renders);
+    expect(await stageHash(page)).toBe(original);
+    expect(pageErrors).toEqual([]);
   });
 });

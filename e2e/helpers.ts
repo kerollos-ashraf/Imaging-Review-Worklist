@@ -54,10 +54,16 @@ export function stage(page: Page): Locator {
   return page.getByTestId('viewer-canvas');
 }
 
+/**
+ * A hash of the pixels the viewer actually drew. It reads the viewer's own
+ * canvas rather than a page screenshot, because a screenshot's edge pixels
+ * depend on scroll position and sub-pixel layout, which are not image content.
+ */
 export async function stageHash(page: Page): Promise<string> {
-  return createHash('sha1')
-    .update(await stage(page).screenshot())
-    .digest('hex');
+  const dataUrl = await stage(page)
+    .locator('canvas')
+    .evaluate((canvas) => (canvas as HTMLCanvasElement).toDataURL('image/png'));
+  return createHash('sha1').update(dataUrl).digest('hex');
 }
 
 /** True when the screenshot contains real image content, not a flat colour. */
