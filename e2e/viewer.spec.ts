@@ -160,6 +160,11 @@ test.describe('real DICOM viewer', () => {
   });
 
   test('has no detectable accessibility violations', async ({ page }) => {
+    // Colours animate for 150 ms when the theme or a state changes. A scan taken
+    // mid-animation sees an in-between colour, so the animations are switched off
+    // (the app honours prefers-reduced-motion) to scan only settled states.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+
     const scan = async (): Promise<string[]> => {
       const results = await new AxeBuilder({ page })
         .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
