@@ -105,6 +105,30 @@ export class ViewerController {
     this.publishWindowLevel(windowLevel);
   }
 
+  /**
+   * Relative change, as produced by dragging on the image. Both arguments are
+   * fractions of the image's pixel range; the result is kept within the same
+   * bounds the sliders allow.
+   */
+  adjustWindowLevel(widthFraction: number, centerFraction: number): void {
+    const ready = this.latestReady;
+    if (!ready || this.disposed) {
+      return;
+    }
+    const { minPixel, maxPixel } = ready.info;
+    const range = Math.max(1, maxPixel - minPixel);
+    const clamp = (value: number, low: number, high: number): number =>
+      Math.min(high, Math.max(low, value));
+    this.setWindowLevel({
+      width: clamp(ready.windowLevel.width + widthFraction * range, 1, range * 2),
+      center: clamp(
+        ready.windowLevel.center + centerFraction * range,
+        minPixel - range / 2,
+        maxPixel + range / 2,
+      ),
+    });
+  }
+
   /** Idempotent. After this, no state is published and nothing can be drawn. */
   dispose(): void {
     if (this.disposed) {

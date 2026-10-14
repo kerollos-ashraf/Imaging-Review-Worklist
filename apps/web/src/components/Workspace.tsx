@@ -1,10 +1,15 @@
 import { Suspense, lazy, useCallback, useState } from 'react';
 import type { ReactElement } from 'react';
-import type { Study, StudyFilters } from '../api/types';
+import { FIRST_PAGE, NO_FILTERS } from '../api/types';
+import type { PageRequest, Reviewer, Study, StudyFilters } from '../api/types';
 import { useDrafts } from '../hooks/useDrafts';
+import type { DraftStore } from '../hooks/useDrafts';
 import { useStudyDetail } from '../hooks/useStudyDetail';
+import type { StudyDetailResult } from '../hooks/useStudyDetail';
 import { useStudyList } from '../hooks/useStudyList';
+import type { StudyListResult } from '../hooks/useStudyList';
 import { useStudyMutations } from '../hooks/useStudyMutations';
+import type { StudyMutations } from '../hooks/useStudyMutations';
 import { ErrorBoundary } from './ErrorBoundary';
 import { Filters } from './Filters';
 import { StudyDetail } from './StudyDetail';
@@ -15,8 +20,6 @@ import { Worklist } from './Worklist';
 const ViewerPanel = lazy(() =>
   import('../viewer/ViewerPanel').then((module) => ({ default: module.ViewerPanel })),
 );
-
-const NO_FILTERS: StudyFilters = { status: '', modality: '' };
 
 function ViewerArea({ studyId }: { studyId: string | null }): ReactElement {
   return (
@@ -46,11 +49,36 @@ function ViewerArea({ studyId }: { studyId: string | null }): ReactElement {
   );
 }
 
-export function Workspace({ reviewerId }: { reviewerId: string }): ReactElement {
-  const [filters, setFilters] = useState<StudyFilters>(NO_FILTERS);
+interface Props {
+  reviewerId: string;
+  reviewers: Reviewer[];
+}
+
+interface WorkspaceState {
+  filters: StudyFilters;
+  setFilters: (filters: StudyFilters) => void;
+  paging: PageRequest;
+  setPaging: (paging: PageRequest) => void;
+  selectedId: string | null;
+  setSelectedId: (studyId: string) => void;
+  drafts: DraftStore;
+  list: StudyListResult;
+  detail: StudyDetailResult;
+  mutations: StudyMutations;
+}
+
+/** Wires the list, the selected study, drafts and mutations together. */
+function useWorkspace(reviewerId: string): WorkspaceState {
+  const [filters, setAppliedFilters] = useState<StudyFilters>(NO_FILTERS);
+  const [paging, setPaging] = useState<PageRequest>(FIRST_PAGE);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // New filters describe a different result set, so paging starts over.
+  const setFilters = useCallback((next: StudyFilters) => {
+    setAppliedFilters(next);
+    setPaging((current) => ({ ...current, page: 1 }));
+  }, []);
   const drafts = useDrafts();
-  const list = useStudyList(filters);
+  const list = useStudyList(filters, paging);
   const detail = useStudyDetail(selectedId);
   const { replaceStudy, reload } = list;
   const { applyStudy, retry } = detail;
@@ -75,17 +103,43 @@ export function Workspace({ reviewerId }: { reviewerId: string }): ReactElement 
     onStudyUpdated,
     onRefreshNeeded,
   });
+  return {
+    filters,
+    setFilters,
+    paging,
+    setPaging,
+    selectedId,
+    setSelectedId,
+    drafts,
+    list,
+    detail,
+    mutations,
+  };
+}
+
+export function Workspace({ reviewerId, reviewers }: Props): ReactElement {
+  const workspace = useWorkspace(reviewerId);
+  const { filters, selectedId, drafts, list, detail } = workspace;
 
   return (
     <div className="workspace">
       <section aria-label="Worklist" className="panel">
         <h2>Worklist</h2>
-        <Filters applied={filters} onApply={setFilters} />
+        <Filters
+          applied={filters}
+          reviewers={reviewers}
+          reviewerId={reviewerId}
+          onApply={workspace.setFilters}
+        />
         <Worklist
           state={list.state}
           selectedId={selectedId}
-          onSelect={setSelectedId}
-          onRetry={reload}
+          reviewerId={reviewerId}
+          draftIds={drafts.ids}
+          paging={workspace.paging}
+          onPageChange={workspace.setPaging}
+          onSelect={workspace.setSelectedId}
+          onRetry={list.reload}
         />
       </section>
       <section aria-label="Study detail" className="panel">
@@ -95,8 +149,8 @@ export function Workspace({ reviewerId }: { reviewerId: string }): ReactElement 
           reviewerId={reviewerId}
           draft={selectedId === null ? '' : drafts.get(selectedId)}
           onDraftChange={drafts.set}
-          mutations={mutations}
-          onRetry={retry}
+          mutations={workspace.mutations}
+          onRetry={detail.retry}
         />
         <ViewerArea studyId={selectedId} />
       </section>

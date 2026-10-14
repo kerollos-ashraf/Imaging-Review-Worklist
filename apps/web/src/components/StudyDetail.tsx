@@ -3,6 +3,8 @@ import type { Study } from '../api/types';
 import type { DetailState } from '../hooks/useStudyDetail';
 import type { StudyMutations } from '../hooks/useStudyMutations';
 import { CompletionForm } from './CompletionForm';
+import { ReviewProgress } from './ReviewProgress';
+import { StatusBadge } from './StatusBadge';
 
 interface Props {
   state: DetailState;
@@ -13,22 +15,41 @@ interface Props {
   onRetry: () => void;
 }
 
-function Summary({ study }: { study: Study }): ReactElement {
+const DATE_FORMAT = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+
+function Summary({ study, reviewerId }: { study: Study; reviewerId: string }): ReactElement {
+  const ownedByMe = study.ownerId === reviewerId;
   return (
-    <dl className="summary">
-      <dt>Study</dt>
-      <dd>{study.id}</dd>
-      <dt>Modality</dt>
-      <dd>{study.modality}</dd>
-      <dt>Status</dt>
-      <dd>
-        <span className={`badge ${study.status}`}>{study.status}</span>
-      </dd>
-      <dt>Owner</dt>
-      <dd>{study.ownerId ?? 'Nobody yet'}</dd>
-      <dt>Version</dt>
-      <dd>{study.version}</dd>
-    </dl>
+    <div className="detail-summary">
+      <div className="detail-title">
+        <h3>{study.id}</h3>
+        <StatusBadge status={study.status} />
+      </div>
+      <ReviewProgress status={study.status} />
+      <dl className="facts">
+        <div>
+          <dt>Modality</dt>
+          <dd>{study.modality}</dd>
+        </div>
+        <div>
+          <dt>Owner</dt>
+          <dd>
+            {study.ownerId ?? 'Nobody yet'}
+            {ownedByMe && <span className="tag">You</span>}
+          </dd>
+        </div>
+        <div>
+          <dt>Created</dt>
+          <dd>
+            <time dateTime={study.createdAt}>{DATE_FORMAT.format(new Date(study.createdAt))}</time>
+          </dd>
+        </div>
+        <div>
+          <dt>Version</dt>
+          <dd>{study.version}</dd>
+        </div>
+      </dl>
+    </div>
   );
 }
 
@@ -43,31 +64,37 @@ function ActionArea({
   const { busy } = mutations;
   if (study.status === 'Unassigned') {
     return (
-      <button
-        type="button"
-        onClick={() => {
-          void mutations.claim();
-        }}
-        disabled={busy || mutations.needsAcknowledge}
-        aria-busy={mutations.pending === 'claim'}
-      >
-        {mutations.pending === 'claim' ? 'Claiming...' : 'Claim study'}
-      </button>
+      <div className="action-card">
+        <p className="muted">Claim this study to start reviewing it. Nobody else can claim it after you.</p>
+        <button
+          type="button"
+          className="primary"
+          onClick={() => {
+            void mutations.claim();
+          }}
+          disabled={busy || mutations.needsAcknowledge}
+          aria-busy={mutations.pending === 'claim'}
+        >
+          {mutations.pending === 'claim' ? 'Claiming...' : 'Claim study'}
+        </button>
+      </div>
     );
   }
   if (study.status === 'Completed') {
     return (
-      <section aria-label="Completed review">
-        <h3>Review note</h3>
+      <section aria-label="Completed review" className="action-card">
+        <h4>Review note</h4>
         <p className="note">{study.reviewNote}</p>
       </section>
     );
   }
   if (study.ownerId !== reviewerId) {
     return (
-      <p className="muted">
-        This study is being reviewed by {study.ownerId}. Only the owner can complete it.
-      </p>
+      <div className="action-card">
+        <p className="muted">
+          This study is being reviewed by {study.ownerId}. Only the owner can complete it.
+        </p>
+      </div>
     );
   }
   return (
@@ -106,13 +133,20 @@ function FeedbackBanner({ mutations }: { mutations: StudyMutations }): ReactElem
 export function StudyDetail(props: Props): ReactElement {
   const { state, mutations, onRetry } = props;
   if (state.kind === 'none') {
-    return <p className="muted">Select a study to see its details.</p>;
+    return (
+      <div className="empty-state">
+        <p className="empty-title">No study selected</p>
+        <p className="muted">Select a study to see its details.</p>
+      </div>
+    );
   }
   if (state.kind === 'loading') {
     return (
-      <p role="status" className="muted">
-        Loading study {state.studyId}...
-      </p>
+      <div role="status" className="skeleton-list">
+        <span className="visually-hidden">Loading study {state.studyId}...</span>
+        <div className="skeleton tall" aria-hidden="true" />
+        <div className="skeleton" aria-hidden="true" />
+      </div>
     );
   }
   if (state.kind === 'error') {
@@ -126,8 +160,8 @@ export function StudyDetail(props: Props): ReactElement {
     );
   }
   return (
-    <div>
-      <Summary study={state.study} />
+    <div className="detail">
+      <Summary study={state.study} reviewerId={props.reviewerId} />
       <FeedbackBanner mutations={mutations} />
       <ActionArea {...props} study={state.study} />
     </div>

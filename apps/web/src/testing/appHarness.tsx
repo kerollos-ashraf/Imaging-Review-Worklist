@@ -4,6 +4,7 @@ import { App } from '../App';
 import { ApiContext } from '../api/ApiContext';
 import type { Study } from '../api/types';
 import { FakeStudyApi } from './FakeStudyApi';
+import type { PageAnswer } from './FakeStudyApi';
 
 export interface Harness {
   api: FakeStudyApi;
@@ -19,7 +20,7 @@ export async function settle(action: () => void): Promise<void> {
 }
 
 /** Renders the app and answers the initial list request with `studies`. */
-export async function openApp(studies: Study[]): Promise<Harness> {
+export async function openApp(studies: Study[] | PageAnswer): Promise<Harness> {
   const api = new FakeStudyApi();
   const user = userEvent.setup();
   render(

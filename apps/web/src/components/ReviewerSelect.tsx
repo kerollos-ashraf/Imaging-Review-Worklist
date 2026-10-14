@@ -9,7 +9,7 @@ interface Props {
 
 export function ReviewerSelect({ reviewers, value, onChange }: Props): ReactElement {
   return (
-    <div className="field">
+    <div className="reviewer-select">
       <label htmlFor="reviewer-select">Reviewer</label>
       <select
         id="reviewer-select"

@@ -9,7 +9,10 @@ export function ViewerPanel({ studyId }: { studyId: string | null }): ReactEleme
   if (studyId === null) {
     return (
       <section aria-label="Image viewer" className="viewer-slot">
-        <p className="muted">The image viewer opens when a study is selected.</p>
+        <div className="empty-state">
+          <p className="empty-title">No image to show yet</p>
+          <p className="muted">The image viewer opens when a study is selected.</p>
+        </div>
       </section>
     );
   }
@@ -27,7 +30,11 @@ export function ViewerPanel({ studyId }: { studyId: string | null }): ReactEleme
           {open ? 'Close viewer' : 'Open viewer'}
         </button>
       </div>
-      {open && <DicomViewer studyId={studyId} />}
+      {open ? (
+        <DicomViewer studyId={studyId} />
+      ) : (
+        <p className="muted">The viewer is closed and its resources have been released.</p>
+      )}
     </section>
   );
 }

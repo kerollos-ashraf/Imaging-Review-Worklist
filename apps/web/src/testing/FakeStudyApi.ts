@@ -2,10 +2,13 @@ import type { StudyApi } from '../api/StudyApi';
 import type {
   CompleteInput,
   MutationInput,
+  PageRequest,
   Reviewer,
   Study,
   StudyFilters,
+  StudyPage,
 } from '../api/types';
+import { countByStatus } from '../api/types';
 
 /** A promise the test resolves or rejects explicitly, in whatever order it likes. */
 export interface Deferred<T> {
@@ -29,6 +32,14 @@ export interface PendingCall<TArgs, TResult> {
   result: Deferred<TResult>;
 }
 
+/** A list request: the filters in `args`, the requested page alongside. */
+/** What a test may answer a list request with. */
+export type PageAnswer = Pick<StudyPage, 'studies' | 'total'> & Partial<StudyPage>;
+
+export interface ListCall extends PendingCall<StudyFilters, Study[] | PageAnswer> {
+  paging: PageRequest;
+}
+
 export const REVIEWERS: Reviewer[] = [
   { id: 'reviewer-a', displayName: 'Reviewer A' },
   { id: 'reviewer-b', displayName: 'Reviewer B' },
@@ -39,7 +50,7 @@ export const REVIEWERS: Reviewer[] = [
  * exactly when and in which order responses arrive. No timers are involved.
  */
 export class FakeStudyApi implements StudyApi {
-  readonly listCalls: PendingCall<StudyFilters, Study[]>[] = [];
+  readonly listCalls: ListCall[] = [];
   readonly getCalls: PendingCall<string, Study>[] = [];
   readonly claimCalls: PendingCall<{ id: string; input: MutationInput }, Study>[] = [];
   readonly completeCalls: PendingCall<{ id: string; input: CompleteInput }, Study>[] = [];
@@ -48,10 +59,15 @@ export class FakeStudyApi implements StudyApi {
     return Promise.resolve(REVIEWERS);
   }
 
-  listStudies(filters: StudyFilters): Promise<Study[]> {
-    const result = deferred<Study[]>();
-    this.listCalls.push({ args: filters, result });
-    return result.promise;
+  listStudies(filters: StudyFilters, paging: PageRequest): Promise<StudyPage> {
+    const result = deferred<Study[] | PageAnswer>();
+    this.listCalls.push({ args: filters, paging, result });
+    // Resolving with a plain array means "this is the whole result set". A page
+    // answer may leave the status breakdown out, in which case the page is counted.
+    return result.promise.then((value) => {
+      const page = Array.isArray(value) ? { studies: value, total: value.length } : value;
+      return { ...page, statusCounts: page.statusCounts ?? countByStatus(page.studies) };
+    });
   }
 
   getStudy(id: string): Promise<Study> {

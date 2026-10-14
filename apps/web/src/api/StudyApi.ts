@@ -1,15 +1,19 @@
 import type {
   CompleteInput,
   MutationInput,
+  PageRequest,
   Reviewer,
+  StatusCounts,
   Study,
   StudyFilters,
+  StudyPage,
 } from './types';
+import { countByStatus } from './types';
 
 /** Transport-independent contract so components and tests can inject a fake. */
 export interface StudyApi {
   listReviewers(signal?: AbortSignal): Promise<Reviewer[]>;
-  listStudies(filters: StudyFilters, signal?: AbortSignal): Promise<Study[]>;
+  listStudies(filters: StudyFilters, paging: PageRequest, signal?: AbortSignal): Promise<StudyPage>;
   getStudy(id: string, signal?: AbortSignal): Promise<Study>;
   /** Raw bytes of the study image; decoding is the viewer's job. */
   getStudyFile(id: string, signal?: AbortSignal): Promise<Blob>;
@@ -50,6 +54,26 @@ interface ErrorEnvelope {
   error?: { code?: string; message?: string; current?: Study };
 }
 
+/** Falls back to counting the page itself if the header is missing or unreadable. */
+function parseStatusCounts(header: string | null, studies: Study[]): StatusCounts {
+  const fallback = countByStatus(studies);
+  if (header === null) {
+    return fallback;
+  }
+  try {
+    const parsed = JSON.parse(header) as Partial<Record<string, unknown>>;
+    const read = (key: keyof StatusCounts): number =>
+      typeof parsed[key] === 'number' ? parsed[key] : fallback[key];
+    return {
+      Unassigned: read('Unassigned'),
+      InReview: read('InReview'),
+      Completed: read('Completed'),
+    };
+  } catch {
+    return fallback;
+  }
+}
+
 export class HttpStudyApi implements StudyApi {
   constructor(
     private readonly baseUrl = '',
@@ -60,17 +84,38 @@ export class HttpStudyApi implements StudyApi {
     return this.request<Reviewer[]>('/api/reviewers', withSignal(signal));
   }
 
-  listStudies(filters: StudyFilters, signal?: AbortSignal): Promise<Study[]> {
+  async listStudies(
+    filters: StudyFilters,
+    paging: PageRequest,
+    signal?: AbortSignal,
+  ): Promise<StudyPage> {
     const params = new URLSearchParams();
     if (filters.status !== '') {
       params.set('status', filters.status);
     }
-    const modality = filters.modality.trim();
-    if (modality !== '') {
-      params.set('modality', modality);
+    const optional: [string, string][] = [
+      ['modality', filters.modality.trim()],
+      ['ownerId', filters.ownerId],
+      ['search', filters.search.trim()],
+      // Ascending is the API default, so it is left out of the URL.
+      ['order', filters.order === 'desc' ? 'desc' : ''],
+    ];
+    for (const [key, value] of optional) {
+      if (value !== '') {
+        params.set(key, value);
+      }
     }
-    const query = params.toString();
-    return this.request<Study[]>(`/api/studies${query === '' ? '' : `?${query}`}`, withSignal(signal));
+    params.set('page', String(paging.page));
+    params.set('pageSize', String(paging.pageSize));
+    const response = await this.send(`/api/studies?${params.toString()}`, withSignal(signal));
+    const studies = (await response.json()) as Study[];
+    // The body is the page; the size of the whole result set is in a header.
+    const total = Number(response.headers.get('X-Total-Count'));
+    return {
+      studies,
+      total: Number.isFinite(total) && total > 0 ? total : studies.length,
+      statusCounts: parseStatusCounts(response.headers.get('X-Status-Counts'), studies),
+    };
   }
 
   getStudy(id: string, signal?: AbortSignal): Promise<Study> {

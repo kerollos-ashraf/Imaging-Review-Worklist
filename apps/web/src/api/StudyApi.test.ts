@@ -1,5 +1,6 @@
 /** @jest-environment node */
 import { ApiError, HttpStudyApi, NetworkError } from './StudyApi';
+import { FIRST_PAGE, NO_FILTERS } from './types';
 
 type FetchArgs = Parameters<typeof fetch>;
 
@@ -25,11 +26,68 @@ function json(body: unknown, status = 200): Response {
 describe('HttpStudyApi', () => {
   it('sends only the filters that are set', async () => {
     const { api, calls } = apiReturning(() => json([]));
-    await api.listStudies({ status: '', modality: '' });
-    await api.listStudies({ status: 'InReview', modality: ' OT ' });
+    await api.listStudies(NO_FILTERS, FIRST_PAGE);
+    await api.listStudies({ ...NO_FILTERS, status: 'InReview', modality: ' OT ' }, FIRST_PAGE);
+    await api.listStudies(
+      { ...NO_FILTERS, ownerId: 'reviewer-a', search: ' Study 1 ', order: 'desc' },
+      { page: 3, pageSize: 25 },
+    );
 
-    expect(calls[0]?.[0]).toBe('/api/studies');
-    expect(calls[1]?.[0]).toBe('/api/studies?status=InReview&modality=OT');
+    expect(calls[0]?.[0]).toBe('/api/studies?page=1&pageSize=10');
+    expect(calls[1]?.[0]).toBe('/api/studies?status=InReview&modality=OT&page=1&pageSize=10');
+    expect(calls[2]?.[0]).toBe(
+      '/api/studies?ownerId=reviewer-a&search=Study+1&order=desc&page=3&pageSize=25',
+    );
+  });
+
+  it('reads the page from the body and the total from the header', async () => {
+    const { api } = apiReturning(
+      () =>
+        new Response(JSON.stringify([{ id: 's1' }, { id: 's2' }]), {
+          headers: { 'Content-Type': 'application/json', 'X-Total-Count': '57' },
+        }),
+    );
+    const page = await api.listStudies(NO_FILTERS, FIRST_PAGE);
+    expect(page.studies.map((study) => study.id)).toEqual(['s1', 's2']);
+    expect(page.total).toBe(57);
+  });
+
+  it('reads the all-pages status breakdown from its header', async () => {
+    const { api } = apiReturning(
+      () =>
+        new Response(JSON.stringify([{ id: 's1', status: 'Unassigned' }]), {
+          headers: {
+            'X-Total-Count': '100',
+            'X-Status-Counts': '{"Unassigned":40,"InReview":39,"Completed":21}',
+          },
+        }),
+    );
+    const page = await api.listStudies(NO_FILTERS, FIRST_PAGE);
+    expect(page.statusCounts).toEqual({ Unassigned: 40, InReview: 39, Completed: 21 });
+  });
+
+  it.each([
+    ['is missing', undefined],
+    ['is not JSON', 'nonsense'],
+  ])('counts the page itself when the status header %s', async (_name, header) => {
+    const { api } = apiReturning(
+      () =>
+        new Response(
+          JSON.stringify([
+            { id: 's1', status: 'Unassigned' },
+            { id: 's2', status: 'Completed' },
+            { id: 's3', status: 'Completed' },
+          ]),
+          { headers: header === undefined ? {} : { 'X-Status-Counts': header } },
+        ),
+    );
+    const page = await api.listStudies(NO_FILTERS, FIRST_PAGE);
+    expect(page.statusCounts).toEqual({ Unassigned: 1, InReview: 0, Completed: 2 });
+  });
+
+  it('falls back to the page length when the total header is missing', async () => {
+    const { api } = apiReturning(() => json([{ id: 's1' }]));
+    expect((await api.listStudies(NO_FILTERS, FIRST_PAGE)).total).toBe(1);
   });
 
   it('encodes the study id in the path', async () => {

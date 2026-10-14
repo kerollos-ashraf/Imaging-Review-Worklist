@@ -256,4 +256,25 @@ describe('ViewerController', () => {
     harness.controller.reset();
     expect(lastState(harness)).toMatchObject({ windowLevel: RENDERED.windowLevel });
   });
+
+  it('adjusts window/level relatively and keeps it within the slider bounds', async () => {
+    const harness = setup();
+    harness.controller.adjustWindowLevel(0.5, 0.5);
+    expect(harness.renderer.calls).toEqual([]);
+
+    void harness.controller.load('a');
+    await deliverFile(harness, 'a');
+    harness.renderer.shows[0]?.resolve(RENDERED);
+    await settle();
+
+    // Pixel range is 0..100, starting at width 100 / centre 50.
+    harness.controller.adjustWindowLevel(0.2, -0.1);
+    expect(lastState(harness)).toMatchObject({ windowLevel: { width: 120, center: 40 } });
+
+    harness.controller.adjustWindowLevel(50, 50);
+    expect(lastState(harness)).toMatchObject({ windowLevel: { width: 200, center: 150 } });
+
+    harness.controller.adjustWindowLevel(-50, -50);
+    expect(lastState(harness)).toMatchObject({ windowLevel: { width: 1, center: -50 } });
+  });
 });

@@ -6,6 +6,7 @@ import { describeViewerError } from './describeViewerError';
 import { inspectDicom } from './dicomInspection';
 import type { ReadyState, ViewerState, WindowLevel } from './types';
 import { ViewerController } from './ViewerController';
+import { attachWindowLevelDrag } from './windowLevelDrag';
 
 interface Props {
   studyId: string;
@@ -63,16 +64,22 @@ function ImageSummary({
   const { info } = state;
   return (
     <div role="group" aria-label="Image information">
-    <dl className="summary">
-      <dt>Modality</dt>
-      <dd>{info.modality}</dd>
-      <dt>Study date</dt>
-      <dd>{info.studyDate}</dd>
-      <dt>Dimensions</dt>
-      <dd>
-        {info.columns} x {info.rows} px
-      </dd>
-    </dl>
+      <dl className="facts compact">
+        <div>
+          <dt>Modality</dt>
+          <dd>{info.modality}</dd>
+        </div>
+        <div>
+          <dt>Study date</dt>
+          <dd>{info.studyDate}</dd>
+        </div>
+        <div>
+          <dt>Dimensions</dt>
+          <dd>
+            {info.columns} x {info.rows} px
+          </dd>
+        </div>
+      </dl>
     </div>
   );
 }
@@ -105,7 +112,12 @@ function useViewerController(studyId: string): {
       onState: setState,
     });
     controllerRef.current = controller;
+    // Drag right/left widens/narrows the window; drag up/down raises/lowers the level.
+    const detachDrag = attachWindowLevelDrag(element, (horizontal, vertical) => {
+      controller.adjustWindowLevel(horizontal, -vertical);
+    });
     return () => {
+      detachDrag();
       controller.dispose();
       controllerRef.current = null;
     };
@@ -148,15 +160,20 @@ export function DicomViewer({ studyId }: Props): ReactElement {
       </div>
       {ready !== null && (
         <>
-          <ImageSummary state={ready} />
-          <div className="actions">
-            <button type="button" onClick={() => controllerRef.current?.fit()}>
-              Fit
-            </button>
-            <button type="button" onClick={() => controllerRef.current?.reset()}>
-              Reset
-            </button>
+          <div className="viewer-toolbar">
+            <ImageSummary state={ready} />
+            <div className="toolbar-buttons">
+              <button type="button" onClick={() => controllerRef.current?.fit()}>
+                Fit
+              </button>
+              <button type="button" onClick={() => controllerRef.current?.reset()}>
+                Reset
+              </button>
+            </div>
           </div>
+          <p className="hint">
+            Drag on the image to adjust window and level, or use the sliders below.
+          </p>
           <WindowLevelControls
             state={ready}
             onChange={(windowLevel) => controllerRef.current?.setWindowLevel(windowLevel)}
